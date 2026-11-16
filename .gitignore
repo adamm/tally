@@ -1,2 +1,4 @@
 node_modules/
 .env
+# Each owner's own deploy script (their project, instance and dataset). Cloud Build is planned.
+deploy.sh

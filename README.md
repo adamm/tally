@@ -79,7 +79,7 @@ reading a site's numbers, so strangers (and other sites) can't.
 | `JOBS_SECRET` | the secret `/jobs/export` expects in `X-Job-Secret`; empty turns the export off |
 | `HIT_LIMITS` | speed limit for hits per address, `count/minutes` (comma-separated for several), or `off` |
 | `TRUST_PROXY` | how many proxies sit in front (default 1, Cloud Run's) |
-| `GIT_COMMIT` | shown by `/version` (`deploy.sh` sets it) |
+| `GIT_COMMIT` | shown by `/version` (set it when deploying) |
 
 ## What's kept (MySQL database `tally`)
 
@@ -149,13 +149,19 @@ It refuses a second copy unless given `--replace`.
 
 ## Deploying to Cloud Run
 
-`deploy.sh` builds this folder and deploys the Cloud Run service `tally`. Set the project,
-region, Cloud SQL instance and BigQuery dataset at its top first. Each container start brings
-the database up to date (`src/migrate.js`).
+Build this folder (its `Dockerfile`) and deploy it as the Cloud Run service `tally`, connected
+to the Cloud SQL instance, with the settings above. Each container start brings the database up
+to date (`src/migrate.js`). For example:
 ```bash
-./deploy.sh
+gcloud run deploy tally --project <project> --region <region> --source . \
+  --service-account tally-run@<project>.iam.gserviceaccount.com \
+  --add-cloudsql-instances <project>:<region>:<instance> \
+  --set-env-vars "DB_SOCKET=/cloudsql/<project>:<region>:<instance>,DB_USER=tally,DB_NAME=tally,TALLY_DATASET=<project>.tally,GIT_COMMIT=$(git rev-parse --short HEAD)" \
+  --set-secrets "DB_PASSWORD=tally-db-password:latest,JOBS_SECRET=tally-jobs-secret:latest" \
+  --allow-unauthenticated --min-instances 0 --max-instances 2 --memory 256Mi --timeout 600
 gcloud run services logs read tally --project <project> --region <region>
 ```
+A `deploy.sh` holding your own version of that command is ignored by git.
 
 ### One-time setup (in this order)
 
@@ -194,7 +200,7 @@ SQL instance.
    bq mk --location=US -d <project>:tally_dev
    ```
    then give access in the console (dataset → Sharing → Permissions), or with `bq update`.
-4. **Deploy** with `./deploy.sh`.
+4. **Deploy** (above).
 5. **Domain** (optional; the service's own `run.app` address works too): a Cloud Run domain
    mapping on `tally`, and a CNAME to `ghs.googlehosted.com.` wherever your DNS is:
    ```bash
