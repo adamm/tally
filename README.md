@@ -237,13 +237,26 @@ SQL instance.
    ```
    If the deploy needs it, also let your own account act as `tally-run`
    (`roles/iam.serviceAccountUser`).
-3. **BigQuery dataset** `tally` (and `tally_dev` for local tries), with WRITER for `tally-run`,
-   and READER for whatever draws your dashboards:
+3. **BigQuery dataset** `tally` (and `tally_dev` for local tries):
    ```bash
    bq mk --location=US -d <project>:tally
    bq mk --location=US -d <project>:tally_dev
    ```
-   then give access in the console (dataset → Sharing → Permissions), or with `bq update`.
+   Then give `tally-run` WRITER on `tally`, so the export can make and fill the `events` table,
+   and READER to the account that draws your dashboards (`<dashboards>` below; leave that entry
+   out if there's none yet). The project-wide `bigquery.jobUser` from step 2 isn't enough on its
+   own. This adds the two to the dataset's existing access list (needs `jq`):
+   ```bash
+   bq show --format=prettyjson <project>:tally | jq '{access: (.access + [
+     {role: "WRITER", userByEmail: "tally-run@<project>.iam.gserviceaccount.com"},
+     {role: "READER", userByEmail: "<dashboards>@<project>.iam.gserviceaccount.com"}])}' > tally-access.json
+   bq update --source tally-access.json <project>:tally
+   rm tally-access.json
+   ```
+   Check with `bq show <project>:tally`, which lists who has access. Without WRITER, every
+   export fails with "Permission bigquery.tables.create denied on dataset" in Tally's logs;
+   nothing is lost, and the next export after the fix sends everything. The console's dataset
+   → Sharing → Permissions does the same.
 4. **Deploy** (above).
 5. **Domain** (optional; the service's own `run.app` address works too): a Cloud Run domain
    mapping on `tally`, and a CNAME to `ghs.googlehosted.com.` wherever your DNS is:
