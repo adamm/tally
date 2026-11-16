@@ -77,6 +77,7 @@ reading a site's numbers, so strangers (and other sites) can't.
 | `PORT` | the port to listen on (Cloud Run sets it; default 8080) |
 | `TALLY_DATASET` | the BigQuery dataset for the export, as `project.dataset`; empty turns the export off |
 | `JOBS_SECRET` | the secret `/jobs/export` expects in `X-Job-Secret`; empty turns the export off |
+| `EXPORT_BATCH` | rows per BigQuery load (default 10,000; larger batches need more memory) |
 | `HIT_LIMITS` | speed limit for hits per address, `count/minutes` (comma-separated for several), or `off` |
 | `TRUST_PROXY` | how many proxies sit in front (default 1, Cloud Run's) |
 | `GIT_COMMIT` | shown by `/version` (set it when deploying) |

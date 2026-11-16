@@ -15,7 +15,10 @@ const BIGQUERY_URL = (process.env.BIGQUERY_URL || 'https://bigquery.googleapis.c
 export const exportOn = /^[\w-]+\.\w+$/.test(DATASET);
 
 const TABLE = 'events';
-const BATCH = 50_000;
+// Rows per load. Each batch is held in memory twice (the rows and the JSON sent), so 50,000 rows
+// went past Cloud Run's 256 MB. 10,000 stays well under, and is still only ten loads for a
+// backfill of 100,000 rows.
+const BATCH = Number(process.env.EXPORT_BATCH) || 10_000;
 const COLUMNS = [['id', 'INT64'], ['site_id', 'STRING'], ['created_at', 'TIMESTAMP'], ['visitor_id', 'STRING'],
   ['visit_id', 'STRING'], ['is_page_view', 'BOOL'], ['event_name', 'STRING'], ['event_data', 'STRING'],
   ['url_path', 'STRING'], ['url_query', 'STRING'], ['page_title', 'STRING'], ['referrer_domain', 'STRING'],
