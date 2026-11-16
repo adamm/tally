@@ -163,6 +163,50 @@ gcloud run services logs read tally --project <project> --region <region>
 ```
 A `deploy.sh` holding your own version of that command is ignored by git.
 
+### Deploying with Cloud Build
+
+`cloudbuild.yaml` builds the image, pushes it to Artifact Registry and deploys it with the same
+settings. A Cloud Build trigger runs it on every push to a branch, `production` here, so to ship
+what's on `main`:
+```bash
+git push origin main:production
+```
+The build doesn't run the tests (they need MySQL), so run `npm test` before pushing. Your
+project's names are the trigger's substitutions (listed at the top of `cloudbuild.yaml`), not in
+the repository. Watch builds under Cloud Build → History, or with
+`gcloud builds list --project <project> --region <region>`.
+
+One-time setup, after the one-time setup below:
+1. A service account for deploys, `tally-deploy`, with only what a deploy needs (`run.admin`
+   because each deploy keeps the service public):
+   ```bash
+   gcloud iam service-accounts create tally-deploy --project <project> --display-name "Tally deploys (Cloud Build)"
+   for R in roles/run.admin roles/logging.logWriter; do
+     gcloud projects add-iam-policy-binding <project> --member serviceAccount:tally-deploy@<project>.iam.gserviceaccount.com --role $R --condition=None
+   done
+   gcloud iam service-accounts add-iam-policy-binding tally-run@<project>.iam.gserviceaccount.com --project <project> --member serviceAccount:tally-deploy@<project>.iam.gserviceaccount.com --role roles/iam.serviceAccountUser
+   gcloud artifacts repositories add-iam-policy-binding <repo> --project <project> --location <region> --member serviceAccount:tally-deploy@<project>.iam.gserviceaccount.com --role roles/artifactregistry.writer
+   ```
+   (`<repo>` is an Artifact Registry Docker repository; `gcloud run deploy --source` makes one
+   called `cloud-run-source-deploy`.) A brand-new service account can take a minute to be
+   usable, so if a grant says it doesn't exist, run it again.
+2. Connect GitHub, if the project has no Cloud Build connection yet
+   (`gcloud builds connections create github <connection> --project <project> --region <region>`,
+   then open the address it prints and install the Cloud Build app). Make sure the app may see
+   this repository (GitHub → Settings → Applications → Google Cloud Build → Repository access),
+   then link it:
+   ```bash
+   gcloud builds repositories create tally --remote-uri https://github.com/<you>/tally.git --connection <connection> --project <project> --region <region>
+   ```
+3. The trigger:
+   ```bash
+   gcloud builds triggers create github --name tally-production --project <project> --region <region> \
+     --repository projects/<project>/locations/<region>/connections/<connection>/repositories/tally \
+     --branch-pattern '^production$' --build-config cloudbuild.yaml \
+     --service-account projects/<project>/serviceAccounts/tally-deploy@<project>.iam.gserviceaccount.com \
+     --substitutions "_IMAGE=<region>-docker.pkg.dev/<project>/<repo>/tally,_REGION=<region>,_SQL_INSTANCE=<project>:<region>:<instance>,_DATASET=<project>.tally,_RUN_AS=tally-run@<project>.iam.gserviceaccount.com"
+   ```
+
 ### One-time setup (in this order)
 
 Below, `<project>`, `<region>` and `<instance>` are your Google Cloud project, region and Cloud
