@@ -52,10 +52,18 @@ export const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) Ap
 export async function setup(label, { env: extraEnv = {} } = {}) {
   const login = dbLogin();
   const dbName = `tally_test_${label}`;
+  // Closed even when this fails, so a login without rights to make databases fails the tests
+  // rather than leaving them waiting.
   const admin = await mysql.createConnection(login);
-  await admin.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
-  await admin.query(`CREATE DATABASE \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  await admin.end();
+  try {
+    await admin.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+    await admin.query(`CREATE DATABASE \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  } catch (err) {
+    throw new Error(`The login in .env (${login.user}) can't make test databases: ${err.message}. ` +
+      'Give it rights on tally\\_test\\_% databases, or set DB_USER and DB_PASSWORD for npm test.');
+  } finally {
+    await admin.end();
+  }
 
   const port = await freePort();
   const env = {
