@@ -38,9 +38,13 @@ test('reads CSV as psql writes it', () => {
 });
 
 test("copies the rows from before Tally's first row, with Umami's ids and names", async () => {
+  // Kept all-time totals (see stats.js) leave out the older rows, so the copy drops them.
+  await t.db.query(`INSERT INTO totals (site_id, upto, first_at, pageviews, visitors, visits)
+    VALUES ('demo', '2026-11-11 00:00:00', '2026-11-10 00:00:00', 1, 1, 1)`);
   const res = await importUmami('demo', csv);
   assert.equal(res.code, 0, res.out);
   assert.match(res.out, /Copied 2 of 3 rows/);
+  assert.deepEqual((await t.db.query('SELECT * FROM totals'))[0], [], 'the kept totals are dropped');
   const [view, event] = await umamiRows();
   assert.equal(view.visitor_id, 's-1');
   assert.equal(view.visit_id, 'v-1');

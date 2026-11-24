@@ -1,10 +1,10 @@
-// Tally's web service: the tracker script, hits from it, each site's numbers, and the hourly copy
-// to BigQuery. See README.md.
+// Tally's web service: the tracker script, hits from it, each site's numbers, the hourly copy
+// to BigQuery and the hourly all-time totals. See README.md.
 import crypto from 'node:crypto';
 import path from 'node:path';
 import express from 'express';
 import { recordHit, siteFor } from './collect.js';
-import { requireSiteKey, totals, activeVisitors } from './stats.js';
+import { requireSiteKey, totals, activeVisitors, keepTotals } from './stats.js';
 import { exportOn, exportToBigQuery } from './export.js';
 import { rateLimit } from './rate-limit.js';
 import { databaseDown } from './db.js';
@@ -73,18 +73,31 @@ app.get('/api/websites/:site/active', requireSiteKey, async (req, res) => {
   res.json(await activeVisitors(req.site.id));
 });
 
+// Whether a timer's request carries JOBS_SECRET in its X-Job-Secret header. Answers 403 if not.
+const secretHash = (s) => crypto.createHash('sha256').update(String(s)).digest();
+function jobSecretMatches(req, res) {
+  const given = req.get('X-Job-Secret');
+  if (given && crypto.timingSafeEqual(secretHash(given), secretHash(process.env.JOBS_SECRET))) return true;
+  res.status(403).json({ error: 'Wrong or missing job secret.' });
+  return false;
+}
+
 // Cloud Scheduler, every hour, with JOBS_SECRET in an X-Job-Secret header: adds new events to
 // BigQuery (see export.js). Answers { added } when done; 404 when TALLY_DATASET or JOBS_SECRET
 // isn't set; 500 if BigQuery refused (the next run tries again).
-const secretHash = (s) => crypto.createHash('sha256').update(String(s)).digest();
 app.post('/jobs/export', async (req, res) => {
-  const secret = process.env.JOBS_SECRET;
-  if (!secret || !exportOn) return res.status(404).json({ error: 'The export is off.' });
-  const given = req.get('X-Job-Secret');
-  if (!given || !crypto.timingSafeEqual(secretHash(given), secretHash(secret))) {
-    return res.status(403).json({ error: 'Wrong or missing job secret.' });
-  }
+  if (!process.env.JOBS_SECRET || !exportOn) return res.status(404).json({ error: 'The export is off.' });
+  if (!jobSecretMatches(req, res)) return;
   res.json(await exportToBigQuery());
+});
+
+// Cloud Scheduler, every hour, the same way: brings each site's all-time totals up to the start
+// of the hour, so all-time numbers stay quick (see keepTotals in stats.js). Answers { updated };
+// 404 when JOBS_SECRET isn't set. A missed run only makes all-time numbers a little slower.
+app.post('/jobs/totals', async (req, res) => {
+  if (!process.env.JOBS_SECRET) return res.status(404).json({ error: 'Jobs are off.' });
+  if (!jobSecretMatches(req, res)) return;
+  res.json(await keepTotals());
 });
 
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));

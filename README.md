@@ -60,9 +60,10 @@ smaller that runs on an existing MySQL server.
 |---|---|---|---|
 | GET | `/tally.js` | anyone | the tracker script, kept for an hour |
 | POST | `/hit` | browsers on a site's pages | one hit, JSON sent as `text/plain`: `{ site, type: 'view' \| 'event', url, title, referrer, screen, name, data }`. The `Origin` must be one of the site's hostnames. Always 204; anything not recorded (unknown site, other hosts, bots, malformed) is dropped quietly. Speed limit per address: `HIT_LIMITS` (default `300/10`) |
-| GET | `/api/websites/:site/stats?startAt=&endAt=` | the site's server, `Authorization: Bearer <key>` | totals for a time range (milliseconds since 1970) → `{ pageviews, visitors, visits }`, as Umami's API answers |
+| GET | `/api/websites/:site/stats?startAt=&endAt=` | the site's server, `Authorization: Bearer <key>` | totals for a time range (milliseconds since 1970) → `{ pageviews, visitors, visits }`, as Umami's API answers. All-time totals (from the site's first event, `startAt=0`) come from the kept totals plus what came since (see **All-time totals**) |
 | GET | `/api/websites/:site/active` | the same | visitors in the last 5 minutes → `{ visitors }` |
 | POST | `/jobs/export` | a timer, with an `X-Job-Secret` header | adds new events to BigQuery → `{ added }`; 404 without `TALLY_DATASET` or `JOBS_SECRET`, 500 if BigQuery refused (the next run tries again) |
+| POST | `/jobs/totals` | a timer, every hour, the same way | brings each site's kept all-time totals up to the start of the hour → `{ updated }` (sites moved forward); 404 without `JOBS_SECRET` |
 | GET | `/health`, `/version` | anyone | `{ ok: true }`, `{ commit }` |
 
 The service itself is public: browsers must reach `/tally.js` and `/hit`. The key only guards
@@ -76,7 +77,7 @@ reading a site's numbers, so strangers (and other sites) can't.
 | `DB_USER`, `DB_PASSWORD`, `DB_NAME` | the login and database (default user and database `tally`) |
 | `PORT` | the port to listen on (Cloud Run sets it; default 8080) |
 | `TALLY_DATASET` | the BigQuery dataset for the export, as `project.dataset`; empty turns the export off |
-| `JOBS_SECRET` | the secret `/jobs/export` expects in `X-Job-Secret`; empty turns the export off |
+| `JOBS_SECRET` | the secret `/jobs/export` and `/jobs/totals` expect in `X-Job-Secret`; empty turns both off |
 | `EXPORT_BATCH` | rows per BigQuery load (default 10,000; larger batches need more memory) |
 | `HIT_LIMITS` | speed limit for hits per address, `count/minutes` (comma-separated for several), or `off` |
 | `TRUST_PROXY` | how many proxies sit in front (default 1, Cloud Run's) |
@@ -90,6 +91,19 @@ reading a site's numbers, so strangers (and other sites) can't.
   size, and for events their name and data. A visit is a visitor's hits with no gap of 30
   minutes or more. `source` is `umami` for rows copied from Umami.
 - `salts`: this month's secret for visitor ids. `exports`: how far the BigQuery copy has got.
+- `totals`: each site's all-time page views, visitors and visits up to the start of an hour
+  (`upto`), from its first event (`first_at`).
+
+## All-time totals
+
+Counting a site's whole history for every all-time answer gets slower each day, so
+`POST /jobs/totals` keeps each site's totals up to the start of the hour in `totals`. An
+all-time answer is then those totals plus what came since, about an hour of hits. Past hits
+never change, so each run adds only the hours since the last: page views, plus the visitors and
+visits first seen since then (one seen before is already in the totals). The answer is the same
+as counting everything. Without a row in `totals` (before the first run), or for any other time
+range, everything in the range is counted as before. Copying history in from Umami drops the
+site's row, and the next run counts its whole history again.
 
 ## BigQuery
 
@@ -128,6 +142,10 @@ To try the export from your machine, into a development dataset:
 ```bash
 TALLY_DATASET=my-project.tally_dev JOBS_SECRET=x BIGQUERY_ACCESS_TOKEN=$(gcloud auth print-access-token) npm run dev
 curl -X POST -H 'X-Job-Secret: x' http://localhost:3300/jobs/export
+```
+The all-time totals need only `JOBS_SECRET`:
+```bash
+curl -X POST -H 'X-Job-Secret: x' http://localhost:3300/jobs/totals
 ```
 
 To add a site or change one in production, run `add-site` on your machine against the
@@ -269,9 +287,12 @@ SQL instance.
    ready.
 6. **Sites:** `npm run add-site` against the production database (see above), and give each
    site's server its key, ideally in a secret.
-7. **Timer:**
+7. **Timers:**
    ```bash
    gcloud scheduler jobs create http tally-export --project <project> --location <region> --schedule="10 * * * *" --uri=https://tally.example.com/jobs/export --http-method=POST --attempt-deadline=600s --headers="X-Job-Secret=$(gcloud secrets versions access latest --secret=tally-jobs-secret --project <project>)"
+   ```
+   ```bash
+   gcloud scheduler jobs create http tally-totals --project <project> --location <region> --schedule="2 * * * *" --time-zone=Etc/UTC --uri=https://tally.example.com/jobs/totals --http-method=POST --attempt-deadline=600s --headers="X-Job-Secret=$(gcloud secrets versions access latest --secret=tally-jobs-secret --project <project>)"
    ```
 
 ## License

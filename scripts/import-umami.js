@@ -88,6 +88,9 @@ async function main() {
       [rows.slice(i, i + 1000)]
     );
   }
+  // The kept all-time totals don't include these older rows. Without them, all-time numbers are
+  // counted in full until the next POST /jobs/totals (hourly) counts the whole history again.
+  await pool.execute('DELETE FROM totals WHERE site_id = ?', [siteId]);
   console.log(`Copied ${rows.length} of ${lines.length} rows from Umami into "${siteId}"` +
     (first ? ` (those before Tally's first row, ${first.toISOString()}).` : '.'));
 }

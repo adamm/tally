@@ -56,8 +56,25 @@ CREATE TABLE IF NOT EXISTS exports (
   last_id     BIGINT UNSIGNED NOT NULL DEFAULT 0
 );
 
+-- Each site's all-time totals up to the start of an hour (upto): page views, visitors and visits
+-- from its first event (first_at) until then. All-time numbers add only what came since (see
+-- stats.js). Kept up to date by POST /jobs/totals, every hour (migration 001).
+CREATE TABLE IF NOT EXISTS totals (
+  site_id    VARCHAR(30) NOT NULL PRIMARY KEY,
+  upto       TIMESTAMP(3) NOT NULL,
+  first_at   TIMESTAMP(3) NULL DEFAULT NULL,
+  pageviews  BIGINT UNSIGNED NOT NULL,
+  visitors   BIGINT UNSIGNED NOT NULL,
+  visits     BIGINT UNSIGNED NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (site_id) REFERENCES sites(id)
+);
+
 -- Which files in db/migrations are already part of this database.
 CREATE TABLE IF NOT EXISTS schema_migrations (
   name       VARCHAR(255) PRIMARY KEY,
   applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+INSERT IGNORE INTO schema_migrations (name) VALUES
+  ('001_totals.sql');

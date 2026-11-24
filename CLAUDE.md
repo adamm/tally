@@ -25,8 +25,8 @@ messages. Short sentences, no jargon. Commit, push and deploy **only when asked*
   it runs in every visitor's browser.
 - `scripts/`: `add-site.js`, `import-umami.js` (run by hand).
 - `db/schema.sql` plus `db/migrations/NNN_name.sql`. **Adding a migration is three edits:** the
-  file, the same change in `schema.sql`, and (once there's a list) its name in a
-  `schema_migrations` INSERT at the bottom of `schema.sql`.
+  file, the same change in `schema.sql`, and its name in the `schema_migrations` INSERT at
+  the bottom of `schema.sql`.
 
 ## Rules that matter
 
@@ -57,4 +57,5 @@ as the tracker would; `t.api(path, { method, headers })` calls any route; `t.eve
 table; `t.db` is a direct connection. `tracker.test.js` runs `public/tally.js` in a pretend
 browser (`node:vm`) with timers that run on `tick()`.
 
-Files: `collect` (hits), `stats`, `export` (a pretend BigQuery), `tracker`, `import`.
+Files: `collect` (hits), `stats`, `totals` (the hourly all-time totals), `export` (a pretend
+BigQuery), `tracker`, `import`.

@@ -23,7 +23,7 @@ import { findSite, originAllowed } from './sites.js';
 export const PRIVATE_VALUES = ['token', 'email'];
 
 // A visit ends after this long without a hit.
-const VISIT_MINUTES = 30;
+export const VISIT_MINUTES = 30;
 
 // The visitor's IP address. On Cloud Run, Google's front end adds the address it saw as the last
 // entry in X-Forwarded-For (earlier entries come from the visitor and can be faked). Locally,
